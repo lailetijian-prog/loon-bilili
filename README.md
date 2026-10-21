@@ -1,1 +1,1 @@
-# loon-bilili
+# loon-blili.plugin
