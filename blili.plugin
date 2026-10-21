@@ -1,0 +1,32 @@
+#!name = 哔哩哔哩净化
+#!desc = 哔哩哔哩去广告、净化评论、过滤直播干扰
+#!author = ChatGPT
+#!homepage = https://github.com/your98k/Rule-Hub
+#!loon_version = 3.0
+
+[Rule]
+DOMAIN,bsbsb.top,DIRECT
+DOMAIN,api.biliapi.com,REJECT
+DOMAIN,app.biliapi.com,REJECT
+DOMAIN,api.biliapi.net,REJECT
+DOMAIN,app.biliapi.net,REJECT
+AND,((DOMAIN-SUFFIX,chat.bilibili.com),(OR,((DOMAIN-KEYWORD,stun),(DOMAIN-KEYWORD,tracker),(DOMAIN-KEYWORD,p2p)))),REJECT
+DST-PORT,4480,REJECT
+DST-PORT,4483,REJECT
+DST-PORT,9102,REJECT
+
+[Script]
+http-request ^https:\/\/(?:app\.bilibili\.com\/x\/v2\/splash\/list|ap[ip]\.bilibili\.com\/x\/(?:resource\/(?:top\/activity|patch\/tab(?:\/v2)?)|v2\/(?:search\/square|vip\/ads\/materials))|api\.bilibili\.com\/pgc\/activity\/deliver\/material\/receive|api\.live\.bilibili\.com\/xlive\/e-commerce-interface\/v1\/ecommerce-user\/get_shopping_info|line3-h5-mobile-api\.biligame\.com\/game\/live\/large_card_material|grpc\.biliapi\.net\/bilibili\.app\.) script-path=https://raw.githubusercontent.com/your98k/Rule-Hub/main/Script/Bilibili_mock.js,tag=B站广告请求过滤,timeout=10
+
+http-response ^https:\/\/(?:api\.live\.bilibili\.com\/xlive\/open-interface\/v2\/tracker\/conf|api\.bilibili\.com\/x\/pd-proxy\/tracker|api\.bilibili\.com\/pgc\/(?:view\/v2\/app\/season|page\/channel))\? script-path=https://raw.githubusercontent.com/your98k/Rule-Hub/main/Script/Bilibili_jq.js,tag=B站广告响应过滤,requires-body=true,timeout=10
+
+http-request ^https:\/\/(?:grpc\.biliapi\.net|app\.bilibili\.com)\/bilibili\.(?:community\.service\.dm\.v1\.DM\/DmSegMobile|app\.viewunite\.v1\.View\/View|main\.community\.reply\.v1\.Reply\/MainList)$ script-path=https://raw.githubusercontent.com/kokoryh/Sparkle/master/dist/bilibili.protobuf.request.js,tag=B站Protobuf请求,requires-body=true,binary-body-mode=true,timeout=10
+
+http-response ^https:\/\/(?:grpc\.biliapi\.net|app\.bilibili\.com)\/bilibili\.(?:app\.(?:show\.v1\.Popular\/Index|dynamic\.v2\.Dynamic\/DynAll|view(?:unite)?\.v1\.View\/(?:View|ViewProgress|RelatesFeed|AIRelateAsync)|playurl\.v1\.PlayURL\/PlayView|playerunite\.v1\.Player\/PlayViewUnite)|polymer\.app\.search\.v1\.Search\/SearchAll|community\.service\.dm\.v1\.DM\/DmView|main\.community\.reply\.v1\.Reply\/MainList|pgc\.gateway\.player\.v2\.PlayURL\/PlayView)$ script-path=https://raw.githubusercontent.com/kokoryh/Sparkle/master/dist/bilibili.protobuf.response.js,tag=B站Protobuf响应,requires-body=true,binary-body-mode=true,timeout=10
+
+http-response ^https:\/\/app\.bilibili\.com\/x\/(?:resource\/show\/tab\/v2|v2\/(?:splash\/(?:list|show|event\/list2)|feed\/index(?:\/story)?|account\/(?:mine(?:\/ipad)?|myinfo)))\? script-path=https://raw.githubusercontent.com/kokoryh/Sparkle/master/dist/bilibili.json.js,tag=B站首页净化,requires-body=true,timeout=10
+
+http-response ^https:\/\/www\.bilibili\.com\/blackboard\/era\/.+\.html\? script-path=https://raw.githubusercontent.com/kokoryh/Sparkle/master/dist/webpage.bilibili.js,tag=B站网页净化,requires-body=true,timeout=10
+
+[MITM]
+hostname = grpc.biliapi.net,app.bilibili.com,api.bilibili.com,api.live.bilibili.com,www.bilibili.com,line3-h5-mobile-api.biligame.com
