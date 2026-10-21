@@ -1,32 +1,57 @@
-#!name = 哔哩哔哩净化
-#!desc = 哔哩哔哩去广告、净化评论、过滤直播干扰
-#!author = ChatGPT
-#!homepage = https://github.com/your98k/Rule-Hub
-#!loon_version = 3.0
+#!name=哔哩哔哩去广告 · 可调参数
+#!desc=基于 kokoryh/Sparkle 移植。过滤广告、移除青少年模式弹窗与互动弹幕、解锁后台播放与投屏、移除无用功能与链接跟踪参数，支持空降助手跳过视频中插入的广告。使用前需启用 MitM（建议 MitM over HTTP/2），iOS 15 及以上。
+#!author=kokoryh[https://github.com/kokoryh]
+#!homepage=https://github.com/kokoryh/Sparkle
+#!icon=https://raw.githubusercontent.com/luestr/IconResource/main/App_icon/120px/Bilibili.png
+#!openUrl=https://apps.apple.com/app/id736536022
+#!tag=去广告
+#!system=iOS,iPadOS
+#!system_version=15
+#!loon_version=3.5.1(992)
+
+[Argument]
+airborne=switch,true,tag=空降助手,desc=跳过视频中插入的广告（依赖第三方服务器 bsbsb.top）
+airborne_policy=input,"DIRECT",tag=空降助手策略,desc=填写你的代理组名，默认 DIRECT 直连
+purify_comment=switch,true,tag=过滤置顶评论广告
+log_level=select,"4","1","2","3","5",tag=日志等级,desc=1=DEBUG 2=INFO 3=WARN 4=ERROR 5=OFF
 
 [Rule]
-DOMAIN,bsbsb.top,DIRECT
+DOMAIN,bsbsb.top,${airborne_policy}
 DOMAIN,api.biliapi.com,REJECT
 DOMAIN,app.biliapi.com,REJECT
 DOMAIN,api.biliapi.net,REJECT
 DOMAIN,app.biliapi.net,REJECT
 AND,((DOMAIN-SUFFIX,chat.bilibili.com),(OR,((DOMAIN-KEYWORD,stun),(DOMAIN-KEYWORD,tracker),(DOMAIN-KEYWORD,p2p)))),REJECT
-DST-PORT,4480,REJECT
-DST-PORT,4483,REJECT
-DST-PORT,9102,REJECT
+DEST-PORT,4480,REJECT-NO-DROP
+DEST-PORT,4483,REJECT-NO-DROP
+DEST-PORT,9102,REJECT-NO-DROP
+
+[Rewrite]
+# Map Local 风格 mock（已转为 Loon Rewrite）
+request if ${url} ~= /^https:\/\/line3-h5-mobile-api\.biligame\.com\/game\/live\/large_card_material\?/ then reject_dict(200)
+request if ${url} ~= /^https:\/\/api\.live\.bilibili\.com\/xlive\/e-commerce-interface\/v1\/ecommerce-user\/get_shopping_info\?/ then reject_dict(200)
+
+response if ${url} ~= /^https:\/\/app\.bilibili\.com\/x\/v2\/splash\/list\?/ then response.body.mock("json", `{"code":0,"message":"OK","ttl":1,"data":{"max_time":0,"min_interval":31536000,"pull_interval":31536000,"keep_ids":[],"show":[],"list":[{}],"splash_request_id":""}}`, 200)
+response if ${url} ~= /^https:\/\/ap[ip]\.bilibili\.com\/x\/(?:resource\/(?:top\/activity|patch\/tab(?:\/v2)?)|v2\/search\/square|vip\/ads\/materials)\?/ then response.body.mock("json", `{"code":-404,"message":"-404","ttl":1,"data":null}`, 200)
+response if ${url} ~= /^https:\/\/api\.bilibili\.com\/pgc\/activity\/deliver\/material\/receive\?/ then response.body.mock("json", `{"code":0,"data":{"closeType":"close_win","container":[],"showTime":""},"message":"success"}`, 200)
+
+response if ${url} ~= /^https:\/\/grpc\.biliapi\.net\/bilibili\.app\.interface\.v1\.Teenagers\/ModeStatus$/ then response.body.mock("text", "AAAAABMKEQgCEgl0ZWVuYWdlcnMgAioA", 200, true) | response.header.set("grpc-status", "0")
+response if ${url} ~= /^https:\/\/grpc\.biliapi\.net\/bilibili\.app\.interface\.v1\.Search\/DefaultWords$/ then response.body.mock("text", "AAAAACEaHeaQnOe0ouinhumikeOAgeeVquWJp+aIlnVw5Li7KAE=", 200, true) | response.header.set("grpc-status", "0")
+response if ${url} ~= /^https:\/\/grpc\.biliapi\.net\/bilibili\.app\.(?:view\.v1\.View\/TFInfo|viewunite\.v1\.View\/(?:PlayPause|ViewEndPage))$/ then response.body.mock("text", "AAAAAAA=", 200, true) | response.header.set("grpc-status", "0")
+
+response if ${url} ~= /^https:\/\/api\.live\.bilibili\.com\/xlive\/open-interface\/v2\/tracker\/conf\?/ then response.json.jq(`.data.domains=["wss://tracker.chat.bilibili.com"]`)
+response if ${url} ~= /^https:\/\/api\.bilibili\.com\/x\/pd-proxy\/tracker\?/ then response.json.jq(`.data[][]?="stun.chat.bilibili.com:3478"`)
+response if ${url} ~= /^https:\/\/api\.bilibili\.com\/pgc\/view\/v2\/app\/season\?/ then response.json.jq(`del(.data.payment)`)
+response if ${url} ~= /^https:\/\/api\.bilibili\.com\/pgc\/page\/channel\?/ then response.json.jq(`.data.modules |= map(select(.type != "TIP") | if .type == "BANNER" then .module_data.items |= map(select(.url | startswith("https://www.bilibili.com/blackboard/era/") | not)) else . end)`)
 
 [Script]
-http-request ^https:\/\/(?:app\.bilibili\.com\/x\/v2\/splash\/list|ap[ip]\.bilibili\.com\/x\/(?:resource\/(?:top\/activity|patch\/tab(?:\/v2)?)|v2\/(?:search\/square|vip\/ads\/materials))|api\.bilibili\.com\/pgc\/activity\/deliver\/material\/receive|api\.live\.bilibili\.com\/xlive\/e-commerce-interface\/v1\/ecommerce-user\/get_shopping_info|line3-h5-mobile-api\.biligame\.com\/game\/live\/large_card_material|grpc\.biliapi\.net\/bilibili\.app\.) script-path=https://raw.githubusercontent.com/your98k/Rule-Hub/main/Script/Bilibili_mock.js,tag=B站广告请求过滤,timeout=10
+request if ${url} ~= /^https:\/\/(?:grpc\.biliapi\.net|app\.bilibili\.com)\/bilibili\.(?:community\.service\.dm\.v1\.DM\/DmSegMobile|app\.viewunite\.v1\.View\/View|main\.community\.reply\.v1\.Reply\/MainList)$/ then script("https://raw.githubusercontent.com/kokoryh/Sparkle/refs/heads/master/dist/bilibili.protobuf.request.js", {${purify_comment}, ${log_level}}) with requires_body=true, binary_body_mode=true, timeout=10, enable=${airborne}, tag="bilibili.protobuf.request"
 
-http-response ^https:\/\/(?:api\.live\.bilibili\.com\/xlive\/open-interface\/v2\/tracker\/conf|api\.bilibili\.com\/x\/pd-proxy\/tracker|api\.bilibili\.com\/pgc\/(?:view\/v2\/app\/season|page\/channel))\? script-path=https://raw.githubusercontent.com/your98k/Rule-Hub/main/Script/Bilibili_jq.js,tag=B站广告响应过滤,requires-body=true,timeout=10
+response if ${url} ~= /^https:\/\/(?:grpc\.biliapi\.net|app\.bilibili\.com)\/bilibili\.(?:app\.(?:show\.v1\.Popular\/Index|dynamic\.v2\.Dynamic\/DynAll|view(?:unite)?\.v1\.View\/(?:View|ViewProgress|RelatesFeed|AIRelateAsync)|playurl\.v1\.PlayURL\/PlayView|playerunite\.v1\.Player\/PlayViewUnite)|polymer\.app\.search\.v1\.Search\/SearchAll|community\.service\.dm\.v1\.DM\/DmView|main\.community\.reply\.v1\.Reply\/MainList|pgc\.gateway\.player\.v2\.PlayURL\/PlayView)$/ then script("https://raw.githubusercontent.com/kokoryh/Sparkle/refs/heads/master/dist/bilibili.protobuf.response.js", {"auto", ${purify_comment}, ${airborne}, ${log_level}}) with requires_body=true, binary_body_mode=true, timeout=10, tag="bilibili.protobuf.response"
 
-http-request ^https:\/\/(?:grpc\.biliapi\.net|app\.bilibili\.com)\/bilibili\.(?:community\.service\.dm\.v1\.DM\/DmSegMobile|app\.viewunite\.v1\.View\/View|main\.community\.reply\.v1\.Reply\/MainList)$ script-path=https://raw.githubusercontent.com/kokoryh/Sparkle/master/dist/bilibili.protobuf.request.js,tag=B站Protobuf请求,requires-body=true,binary-body-mode=true,timeout=10
+response if ${url} ~= /^https:\/\/app\.bilibili\.com\/x\/(?:resource\/show\/tab\/v2|v2\/(?:splash\/(?:show|event\/list2)|feed\/index(?:\/story)?|account\/(?:mine(?:\/ipad)?|myinfo)))\?/ then script("https://raw.githubusercontent.com/kokoryh/Sparkle/refs/heads/master/dist/bilibili.json.js", {"showCreatorHub":0}) with requires_body=true, tag="bilibili.json"
 
-http-response ^https:\/\/(?:grpc\.biliapi\.net|app\.bilibili\.com)\/bilibili\.(?:app\.(?:show\.v1\.Popular\/Index|dynamic\.v2\.Dynamic\/DynAll|view(?:unite)?\.v1\.View\/(?:View|ViewProgress|RelatesFeed|AIRelateAsync)|playurl\.v1\.PlayURL\/PlayView|playerunite\.v1\.Player\/PlayViewUnite)|polymer\.app\.search\.v1\.Search\/SearchAll|community\.service\.dm\.v1\.DM\/DmView|main\.community\.reply\.v1\.Reply\/MainList|pgc\.gateway\.player\.v2\.PlayURL\/PlayView)$ script-path=https://raw.githubusercontent.com/kokoryh/Sparkle/master/dist/bilibili.protobuf.response.js,tag=B站Protobuf响应,requires-body=true,binary-body-mode=true,timeout=10
+response if ${url} ~= /^https:\/\/www\.bilibili\.com\/blackboard\/era\/.+\.html\?/ then script("https://raw.githubusercontent.com/kokoryh/Sparkle/refs/heads/master/dist/webpage.bilibili.js") with requires_body=true, tag="bilibili.webpage"
 
-http-response ^https:\/\/app\.bilibili\.com\/x\/(?:resource\/show\/tab\/v2|v2\/(?:splash\/(?:list|show|event\/list2)|feed\/index(?:\/story)?|account\/(?:mine(?:\/ipad)?|myinfo)))\? script-path=https://raw.githubusercontent.com/kokoryh/Sparkle/master/dist/bilibili.json.js,tag=B站首页净化,requires-body=true,timeout=10
-
-http-response ^https:\/\/www\.bilibili\.com\/blackboard\/era\/.+\.html\? script-path=https://raw.githubusercontent.com/kokoryh/Sparkle/master/dist/webpage.bilibili.js,tag=B站网页净化,requires-body=true,timeout=10
-
-[MITM]
-hostname = grpc.biliapi.net,app.bilibili.com,api.bilibili.com,api.live.bilibili.com,www.bilibili.com,line3-h5-mobile-api.biligame.com
+[MitM]
+hostname = grpc.biliapi.net, app.bilibili.com, api.bilibili.com, api.live.bilibili.com, www.bilibili.com, line3-h5-mobile-api.biligame.com
